@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Budget Svago</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Svago">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+:root{--bg:#f4f6f5;--card:#fff;--tx:#1b2b26;--mut:#6b7c76;--ac:#2f5d50;--ok:#2f8f5b;--bad:#c0392b;--bd:#dde5e2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111816;--card:#1b2622;--tx:#e8f0ed;--mut:#8fa39b;--ac:#6fb59f;--ok:#58c58a;--bad:#ff7b6b;--bd:#2b3a35}}
+:root[data-theme="dark"]{--bg:#111816;--card:#1b2622;--tx:#e8f0ed;--mut:#8fa39b;--ac:#6fb59f;--ok:#58c58a;--bad:#ff7b6b;--bd:#2b3a35}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,Arial,sans-serif;max-width:480px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:14px}
+h1{font-size:18px;margin:4px 0 14px}
+.lbl{color:var(--mut);font-size:13px}
+.big{font-size:44px;font-weight:700;margin:4px 0}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.bar{height:10px;background:var(--bd);border-radius:6px;overflow:hidden;margin:10px 0 6px}
+.bar>div{height:100%;background:var(--ok);width:0}
+.row{display:flex;gap:8px;margin-top:8px}
+input{width:100%;padding:12px;font-size:17px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
+button{padding:12px 16px;font-size:16px;font-weight:600;border:0;border-radius:10px;background:var(--ac);color:#fff;width:100%}
+button.sec{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+button.x{width:auto;padding:4px 10px;background:transparent;color:var(--mut);font-size:20px}
+.item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)}
+.item:last-child{border:0}
+.item small{color:var(--mut);display:block}
+.sub{display:flex;justify-content:space-between;font-size:14px;margin-top:6px}
+details summary{font-weight:600;cursor:pointer}
+label{display:block;font-size:13px;color:var(--mut);margin-top:10px}
+</style>
+</head>
+<body>
+<h1>💶 Budget Svago</h1>
+
+<div class="card">
+  <div class="lbl">Ti restano questa settimana</div>
+  <div class="big" id="left">–</div>
+  <div class="bar"><div id="fill"></div></div>
+  <div class="sub"><span class="lbl">Speso <b id="wspent">–</b></span><span class="lbl">Massimo <b id="wmax">–</b></span></div>
+  <div class="sub"><span class="lbl">Resto del mese (fino allo stipendio)</span><b id="mleft">–</b></div>
+</div>
+
+<div class="card">
+  <div class="lbl">Nuova spesa extra</div>
+  <div class="row"><input id="amt" type="number" inputmode="decimal" step="0.01" placeholder="Quanto? (€)"></div>
+  <div class="row"><input id="note" type="text" placeholder="Per cosa? (facoltativo)"></div>
+  <div class="row"><button id="add">Aggiungi spesa</button></div>
+</div>
+
+<div class="card">
+  <div class="lbl">Spese di questa settimana</div>
+  <div id="list"></div>
+</div>
+
+<div class="card">
+  <button class="sec" id="pay">💰 Ho ricevuto lo stipendio</button>
+  <div class="lbl" style="margin-top:8px">Azzera le spese e riparte con un nuovo mese.</div>
+</div>
+
+<div class="card">
+  <details>
+    <summary>Impostazioni</summary>
+    <label>Stipendio netto (€)</label><input id="s_stip" type="number" inputmode="decimal" step="0.01">
+    <label>Spese fisse mensili (€) — psicologa, internet, yoga, nicotina, benzina</label><input id="s_fisse" type="number" inputmode="decimal" step="0.01">
+    <label>Risparmio mensile (€)</label><input id="s_risp" type="number" inputmode="decimal" step="0.01">
+    <label>Spesa alimentare e altre spese mensili (€)</label><input id="s_cibo" type="number" inputmode="decimal" step="0.01">
+    <div class="row"><button id="save">Salva impostazioni</button></div>
+    <div class="lbl" style="margin-top:8px">Max settimanale = (stipendio − fisse − risparmio − altre) ÷ 4,33 settimane.</div>
+  </details>
+</div>
+
+<div class="card" id="histcard" style="display:none">
+  <div class="lbl">Mesi passati</div><div id="hist"></div>
+</div>
+
+<script>
+var KEY="budget_svago_v1";
+var def={s:{stip:1150,fisse:291.99,risp:550,cibo:0},start:Date.now(),exp:[],hist:[]};
+var st;
+function load(){try{var r=localStorage.getItem(KEY);st=r?JSON.parse(r):null}catch(e){st=null}
+ if(!st||!st.s)st=JSON.parse(JSON.stringify(def));}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
+function eur(n){return n.toLocaleString("it-IT",{style:"currency",currency:"EUR"})}
+function $(i){return document.getElementById(i)}
+function weekStart(){var d=new Date();d.setHours(0,0,0,0);var w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return d.getTime()}
+function fmtD(t){return new Date(t).toLocaleDateString("it-IT",{weekday:"short",day:"numeric",month:"short"})}
+function render(){
+ var s=st.s, month=s.stip-s.fisse-s.risp-s.cibo, wmax=Math.max(0,month)/(52/12);
+ var ws=weekStart(), wexp=st.exp.filter(function(e){return e.d>=ws});
+ var wsp=wexp.reduce(function(a,e){return a+e.a},0), msp=st.exp.reduce(function(a,e){return a+e.a},0);
+ var left=wmax-wsp;
+ $("left").textContent=eur(left); $("left").className="big "+(left<0?"bad":"ok");
+ $("wspent").textContent=eur(wsp); $("wmax").textContent=eur(wmax);
+ var p=wmax>0?Math.min(100,wsp/wmax*100):100;
+ $("fill").style.width=p+"%"; $("fill").style.background=left<0?"var(--bad)":"var(--ok)";
+ var ml=month-msp; $("mleft").textContent=eur(ml); $("mleft").className=ml<0?"bad":"";
+ var L=$("list"); L.innerHTML="";
+ if(!wexp.length){L.innerHTML='<div class="lbl" style="padding:8px 0">Ancora nessuna spesa questa settimana.</div>'}
+ wexp.slice().reverse().forEach(function(e){
+  var r=document.createElement("div");r.className="item";
+  var a=document.createElement("div");var b=document.createElement("b");b.textContent=eur(e.a);
+  var sm=document.createElement("small");sm.textContent=fmtD(e.d)+(e.n?" · "+e.n:"");
+  a.appendChild(b);a.appendChild(sm);
+  var x=document.createElement("button");x.className="x";x.textContent="×";x.setAttribute("aria-label","Elimina");
+  x.onclick=function(){st.exp=st.exp.filter(function(y){return y.id!==e.id});save();render()};
+  r.appendChild(a);r.appendChild(x);L.appendChild(r)});
+ $("s_stip").value=s.stip;$("s_fisse").value=s.fisse;$("s_risp").value=s.risp;$("s_cibo").value=s.cibo;
+ $("histcard").style.display=st.hist.length?"block":"none";
+ var H=$("hist");H.innerHTML="";
+ st.hist.slice().reverse().slice(0,6).forEach(function(h){var r=document.createElement("div");r.className="item";
+  var a=document.createElement("div");a.textContent=fmtD(h.start)+" → "+fmtD(h.end);
+  var b=document.createElement("b");b.textContent=eur(h.spent);r.appendChild(a);r.appendChild(b);H.appendChild(r)});
+}
+$("add").onclick=function(){
+ var a=parseFloat(String($("amt").value).replace(",","."));
+ if(!(a>0)){$("amt").focus();return}
+ st.exp.push({id:Date.now()+Math.random(),d:Date.now(),a:a,n:$("note").value.trim()});
+ $("amt").value="";$("note").value="";save();render()};
+$("save").onclick=function(){
+ function v(i){var n=parseFloat(String($(i).value).replace(",","."));return isNaN(n)?0:n}
+ st.s={stip:v("s_stip"),fisse:v("s_fisse"),risp:v("s_risp"),cibo:v("s_cibo")};save();render()};
+$("pay").onclick=function(){
+ var r=prompt("Stipendio ricevuto (€). Le spese verranno azzerate:",st.s.stip);
+ if(r===null)return;var n=parseFloat(String(r).replace(",","."));if(!(n>0))return;
+ var tot=st.exp.reduce(function(a,e){return a+e.a},0);
+ st.hist.push({start:st.start,end:Date.now(),spent:tot});
+ st.s.stip=n;st.exp=[];st.start=Date.now();save();render()};
+load();render();
+</script>
+</body>
+</html>
